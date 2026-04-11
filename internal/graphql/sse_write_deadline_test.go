@@ -82,3 +82,24 @@ func TestSSEWithWriteDeadline_Do_DefaultDeadline(t *testing.T) {
 	delta := rec.deadline.Sub(before)
 	assert.GreaterOrEqual(t, delta, 5*time.Minute-time.Second, "default should be 5min")
 }
+
+// TestSSEWithWriteDeadline_Do_SetsXAccelBuffering ensures the wrapper
+// advertises X-Accel-Buffering: no so nginx-ingress (and any proxy that
+// honors the same convention) streams SSE responses without buffering
+// them into a single flush at end-of-stream.
+func TestSSEWithWriteDeadline_Do_SetsXAccelBuffering(t *testing.T) {
+	tr := SSEWithWriteDeadline{WriteDeadline: time.Minute}
+
+	rec := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	req := httptest.NewRequest(http.MethodPost, "/query", nil)
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Content-Type", "application/json")
+
+	func() {
+		defer func() { _ = recover() }()
+		tr.Do(rec, req, nil)
+	}()
+
+	assert.Equal(t, "no", rec.Header().Get("X-Accel-Buffering"),
+		"SSE responses must set X-Accel-Buffering: no to disable proxy buffering")
+}

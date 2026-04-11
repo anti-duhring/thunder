@@ -38,5 +38,14 @@ func (t SSEWithWriteDeadline) Do(w http.ResponseWriter, r *http.Request, exec gr
 			Msg("graphql sse: failed to set write deadline; falling back to server WriteTimeout")
 	}
 
+	// Tell downstream proxies (nginx-ingress, Envoy/Istio with nginx
+	// semantics, and anything that honors the same convention) not to
+	// buffer this response. Without this, proxies with response buffering
+	// enabled by default hold the whole body until the stream closes,
+	// which collapses per-event timing — the client sees every SSE event
+	// arrive at the same instant. Must be set before gqlgen writes the
+	// first response header.
+	w.Header().Set("X-Accel-Buffering", "no")
+
 	transport.SSE{}.Do(w, r, exec)
 }
